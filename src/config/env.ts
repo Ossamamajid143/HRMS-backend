@@ -21,7 +21,18 @@ const envSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
 });
 
-const parsedEnv = envSchema.parse(process.env);
+let parsedEnv;
+try {
+  parsedEnv = envSchema.parse(process.env);
+} catch (error) {
+  if (error instanceof z.ZodError) {
+    console.error('❌ Environment Variable Validation Failed:');
+    error.issues.forEach((issue: z.ZodIssue) => {
+      console.error(`   - ${issue.path.join('.')}: ${issue.message}`);
+    });
+  }
+  throw error;
+}
 
 if (parsedEnv.NODE_ENV === 'test') {
   if (!parsedEnv.TEST_DATABASE_URL) {
