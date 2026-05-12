@@ -2,10 +2,10 @@
   "name": "hrms-dev",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
+    "start": "node dist/server.js",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "test": "cross-env NODE_ENV=test next_cmd='npx drizzle-kit push --force && cross-env NODE_ENV=test jest --runInBand --detectOpenHandles' sh -c 'eval $next_cmd'"
