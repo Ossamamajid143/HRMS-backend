@@ -13,6 +13,12 @@ const envSchema = z.object({
   ADMIN_EMAIL: z.string().email(),
   ADMIN_PASSWORD: z.string().min(6),
   ADMIN_DEPARTMENT: z.string().default('Management'),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.string().optional(),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  FRONTEND_URL: z.string().url().default('http://localhost:5173'),
+  GOOGLE_CLIENT_ID: z.string().optional(),
 });
 
 const parsedEnv = envSchema.parse(process.env);

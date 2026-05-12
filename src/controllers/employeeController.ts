@@ -1,12 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import { db } from '../config/db';
-import { employees } from '../db/schema';
+import { employees, departments, roles, attendance } from '../db/schema';
 import { eq, ilike, or, SQL, count } from 'drizzle-orm';
 
 export const createEmployee = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { name, email, password, role, department } = req.body;
+    const { name, email, password, roleId, departmentId } = req.body;
 
     const existingUser = await db.select().from(employees).where(eq(employees.email, email)).limit(1);
     if (existingUser.length > 0) {
@@ -21,14 +21,12 @@ export const createEmployee = async (req: Request, res: Response, next: NextFunc
       name,
       email,
       passwordHash,
-      role,
-      department
+      roleId,
+      departmentId
     }).returning({
       id: employees.id,
       name: employees.name,
       email: employees.email,
-      role: employees.role,
-      department: employees.department
     });
 
     res.status(201).json({ message: 'Employee created successfully', employee: newUser[0] });
@@ -57,15 +55,19 @@ export const getEmployees = async (req: Request, res: Response, next: NextFuncti
     const total = Number(totalResult[0].value);
     const totalPages = Math.ceil(total / limit);
 
+    // Practical Example: INNER JOIN
+    // We join employees with roles and departments to get the NAME instead of just the ID.
     const data = await db.select({
       id: employees.id,
       name: employees.name,
       email: employees.email,
-      role: employees.role,
-      department: employees.department,
+      role: roles.name,
+      department: departments.name,
       status: employees.status,
       createdAt: employees.createdAt
     }).from(employees)
+      .innerJoin(roles, eq(employees.roleId, roles.id))
+      .innerJoin(departments, eq(employees.departmentId, departments.id))
       .where(condition)
       .limit(limit)
       .offset(offset);
@@ -85,15 +87,21 @@ export const getEmployees = async (req: Request, res: Response, next: NextFuncti
 export const getEmployeeById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { id } = req.params;
+    
+    // Using innerJoin for specific employee
     const employeeRows = await db.select({
       id: employees.id,
       name: employees.name,
       email: employees.email,
-      role: employees.role,
-      department: employees.department,
+      role: roles.name,
+      department: departments.name,
       status: employees.status,
       createdAt: employees.createdAt
-    }).from(employees).where(eq(employees.id, Number(id))).limit(1);
+    }).from(employees)
+      .innerJoin(roles, eq(employees.roleId, roles.id))
+      .innerJoin(departments, eq(employees.departmentId, departments.id))
+      .where(eq(employees.id, Number(id)))
+      .limit(1);
 
     if (employeeRows.length === 0) {
       res.status(404).json({ message: 'Employee not found' });
@@ -109,7 +117,7 @@ export const getEmployeeById = async (req: Request, res: Response, next: NextFun
 export const updateEmployee = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { id } = req.params;
-    const { name, role, department, status } = req.body;
+    const { name, roleId, departmentId, status } = req.body;
 
     const existing = await db.select().from(employees).where(eq(employees.id, Number(id))).limit(1);
     if (existing.length === 0) {
@@ -119,15 +127,13 @@ export const updateEmployee = async (req: Request, res: Response, next: NextFunc
 
     const updated = await db.update(employees).set({
       name: name ?? existing[0].name,
-      role: role ?? existing[0].role,
-      department: department ?? existing[0].department,
+      roleId: roleId ?? existing[0].roleId,
+      departmentId: departmentId ?? existing[0].departmentId,
       status: status ?? existing[0].status,
     }).where(eq(employees.id, Number(id))).returning({
       id: employees.id,
       name: employees.name,
       email: employees.email,
-      role: employees.role,
-      department: employees.department,
       status: employees.status,
     });
 
@@ -140,18 +146,35 @@ export const updateEmployee = async (req: Request, res: Response, next: NextFunc
 export const deleteEmployee = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { id } = req.params;
-    const existing = await db.select().from(employees).where(eq(employees.id, Number(id))).limit(1);
-    if (existing.length === 0) {
-       res.status(404).json({ message: 'Employee not found' });
-       return;
+    const employeeId = Number(id);
+
+    // Practical Example: TRANSACTIONS
+    // We use a transaction to ensure that deleting the employee and their
+    // attendance records is "Atomic". 
+    // If one fails, the other is rolled back automatically.
+    await db.transaction(async (tx) => {
+      console.log(`Starting transaction for deleting employee ${employeeId}`);
+
+      // 1. Delete all attendance records first
+      await tx.delete(attendance).where(eq(attendance.employeeId, employeeId));
+      
+      // 2. Delete the employee
+      const result = await tx.delete(employees).where(eq(employees.id, employeeId)).returning();
+
+      if (result.length === 0) {
+        // This will trigger a ROLLBACK of the attendance deletion!
+        throw new Error('Employee not found');
+      }
+
+      console.log('Transaction completed successfully');
+    });
+
+    res.json({ message: 'Employee and all related records deleted permanently' });
+  } catch (error: any) {
+    if (error.message === 'Employee not found') {
+      res.status(404).json({ message: error.message });
+      return;
     }
-
-    await db.update(employees)
-      .set({ status: 'Inactive' })
-      .where(eq(employees.id, Number(id)));
-
-    res.json({ message: 'Employee deactivated successfully (Soft Delete)' });
-  } catch (error) {
     next(error);
   }
 };

@@ -6,9 +6,9 @@ import { createEmployeeSchema, updateEmployeeSchema } from '../schemas/employeeS
 
 const router = Router();
 
-router.use(authenticateJWT);
-
 router.get('/', getEmployees);
+
+router.use(authenticateJWT);
 router.get('/:id', getEmployeeById);
 
 // Protected routes for Admin/HR only
